@@ -1,0 +1,714 @@
+import pygame
+from pygame.locals import*
+pygame.init()
+
+
+vec=pygame.math.Vector2
+
+screen= pygame.display.set_mode((1000,500))
+pygame.display.set_caption("The dark mystical chemical")
+
+WHITE=(255, 255, 255)
+
+TILE_SIZE=50
+ROWS=screen.get_height()//TILE_SIZE
+COLUMNS=screen.get_width()//TILE_SIZE
+Screen_Width=screen.get_width()
+
+pygame.mixer.init()
+pygame.mixer.music.load("PacMan Original Theme.mp3")
+pygame.mixer.music.set_volume(0.5)
+pygame.mixer.music.play(-1)
+
+
+backgrounds=[
+    pygame.image.load("pixil-frame-0 (23).png"),
+    pygame.image.load("pixil-frame-0 (34).png"),
+    pygame.image.load("pixil-frame-0 (39).png"),
+    pygame.image.load("pixil-frame-0 (40).png"),
+    pygame.image.load("pixil-frame-0 (62).png"),
+    pygame.image.load("pixil-frame-0 (21).png"),
+    pygame.image.load("pixil-frame-0 (22).png"),
+    pygame.image.load("pixil-frame-0 (29).png"),
+    pygame.image.load("pixil-frame-0 (30).png"),
+    pygame.image.load("pixilart-drawing-5.png"),
+    pygame.image.load("graveyard2-pixilart.png"),
+    pygame.image.load("pixilart-drawing-5.png"),
+    pygame.image.load("river1-pixilart.png"),
+    pygame.image.load("pixilart-drawing-6.png")
+]
+current_background= backgrounds[0]
+current_background_rect=current_background.get_rect()
+current_background_rect.topleft = (0,0)
+
+health_animations=[pygame.image.load("pixil-frame-0 (28).png"),
+                   pygame.image.load("pixil-frame-0 (27).png"),
+                   pygame.image.load("pixil-frame-0 (26).png"),]
+for i in range (len(health_animations)):
+    health_animations[i]= pygame.transform.scale(health_animations[i],(100,100))
+
+class Bullet(pygame.sprite.Sprite):
+    def __init__(self, x,y, target_x, target_y,colour, width, height, speed, is_player_bullet=False):
+        super().__init__()
+        self.width=width
+        self.height=height
+        self.colour= colour
+        self.is_player_bullet= is_player_bullet
+        self.image=pygame.Surface((self.width,self.height))
+        self.image.fill(self.colour)
+        self.rect=self.image.get_rect(center=(x,y))
+        direction=vec(target_x - x, target_y - y)
+        self.direction=direction.normalize()
+        self.speed= speed
+
+    def update(self):
+        self.update_bullet()
+    
+    def update_bullet(self):
+        self.rect.x+=self.direction.x*self.speed
+        self.rect.y+=self.direction.y*self.speed
+        if  self.rect.x> screen.get_width() or self.rect.y>screen.get_height():
+            self.kill()
+
+def draw_grid():
+    for i in range(COLUMNS+1):
+        pygame.draw.line(screen,WHITE, (i*TILE_SIZE, 0), (i* TILE_SIZE, 500))
+    for i in range(ROWS+1):
+        pygame.draw.line(screen,WHITE, (0, i*TILE_SIZE), (1000,i*TILE_SIZE))
+
+def iscollision():
+    for enemy in enemy_group:
+        for bullet in bullet_group:
+            if bullet.is_player_bullet:
+                if bullet.rect.colliderect(enemy.rect):
+                    enemy.health-=1
+                    print(f"Enemy health is now {enemy.health}")
+                    bullet.kill()
+                    if enemy.health<=0:
+                        enemy.kill()
+            else:
+                if bullet.rect.colliderect(main_character.rect):
+                    main_character.health-=1
+                    print(f"Player health is now {main_character.health}")
+                    bullet.kill()
+                    if main_character.health <=0:
+                        print("You have lost!")
+def enemy_collision():
+    for enemy in enemy_group:
+        if main_character.rect.colliderect(enemy.rect):
+            if main_character.rect.right> enemy.rect.left:
+                main_character.rect.right= enemy.rect.left
+
+class player(pygame.sprite.Sprite):
+    def __init__(self):
+        super().__init__()
+        self.image=pygame.image.load("main character drawing.png")
+        self.image=pygame.transform.scale(self.image,(100, 100))
+        self.rect= self.image.get_rect()
+        self.rect.x=0
+        self.rect.bottom= screen.get_height()
+        self.speed=7
+        self.Y_VELOCITY=11
+        self.jumping=False
+        self.Y_GRAVITY=1
+        self.JUMP_HEIGHT=20
+        self.health= 3
+        self.healthBar=HealthBar(10,10, self)
+        self.powerup_timer=0
+    def movement(self,keys):
+        if keys[K_LEFT] and self.rect.x > 0:
+            self.rect.x-=self.speed
+        if keys[K_RIGHT]:
+            self.rect.x+=self.speed
+        if self.rect.x > screen.get_width():
+            global current_tilemap, current_background, current_background_rect
+            current_tilemap, current_background, current_background_rect= tile_map_switch(current_tilemap, Main_Tile_Group, Futuristic_Tile_Group)
+            self.rect.x=0
+    def jump(self,keys):
+        if keys[K_SPACE] and not self.jumping :
+            self.Y_VELOCITY=-self.JUMP_HEIGHT
+            self.jumping=True
+        if self.jumping:
+            self.rect.y+=self.Y_VELOCITY
+            self.Y_VELOCITY+= self.Y_GRAVITY
+            if self.rect.bottom==screen.get_height():
+                self.rect.bottom= screen.get_height()
+                self.Y_VELOCITY=0
+                self.jumping=False
+    def shoot(self):
+        for enemy in enemy_group:
+            bullet_start_x= self.rect.centerx
+            bullet_start_y=self.rect.top 
+            bullet=Bullet(bullet_start_x, bullet_start_y, enemy.rect.centerx, enemy.rect.centery, colour=(0,0,225), speed=10, is_player_bullet=True, width=50, height=20)
+            bullet_group.add(bullet)
+    def update(self):
+        self.healthbar.update()
+
+def check_powerup_collision():
+    collided_powerup= pygame.sprite.spritecollide(main_character, powerup_group, True)
+    for powerup in collided_powerup:
+        main_character.speed=12
+        main_character.powerup_timer=300
+
+class Powerup(pygame.sprite.Sprite):
+    def __init__(self,x,y):
+        super().__init__()
+        self.image=pygame.image.load("image.png")
+        self.image=pygame.transform.scale(self.image,(30,30))
+        self.rect=self.image.get_rect()
+        self.rect.topleft=(x,y)
+
+def check_coin_collision():
+    global coin_count
+    collided_coins=pygame.sprite.spritecollide(main_character, coin_group, True)
+    coin_count+=len(collided_coins)
+
+class Coin(pygame.sprite.Sprite):
+    def __init__(self,x,y):
+        super().__init__()
+        self.image=pygame.image.load("coin.png")
+        self.image=pygame.transform.scale(self.image,(30,30))
+        self.rect= self.image.get_rect()
+        self.rect.topleft=(x,y)
+
+def display_coin_count():
+    font=pygame.font.Font(None,36)
+    text = font.render(f"Coins: {coin_count}", True, (255, 255, 0))
+    screen.blit(text, (10, 100))
+
+coin_count=0
+
+class HealthBar(pygame.sprite.Sprite):
+    def __init__(self,x,y, player):
+        super().__init__()
+        self.image= health_animations[0]
+        self.pos=(x,y)
+        self.player=player
+    def update(self, health):
+        if self.player.health==3:
+            self.image= health_animations[0]
+        elif self.player.health==2:
+            self.image= health_animations[2]
+        elif self.player.health==1:
+            self.image= health_animations[1]
+        
+    def render(self, display):
+        display.blit(self.image, self.pos)
+
+class Enemy(pygame.sprite.Sprite):
+    def __init__(self, x, y, health):
+        super().__init__()
+        self.rect=pygame.Rect(x,y,TILE_SIZE, TILE_SIZE)
+        self.health= health
+        self.initial_health= health
+        enemy_group.add(self)
+    def reset_health(self):
+        self.health=self.initial_health
+def reset_enemies():
+    for enemy in enemy_group:
+        enemy.reset_health()
+
+class evil_spider(Enemy):
+    def __init__(self, x, y,):
+        super().__init__(x,y, health=20)
+        self.image=pygame.image.load("pixil-frame-0 (43).png")
+        self.rect= self.image.get_rect()
+        self.rect.x=x
+        self.rect.y=y
+        self.shoot_time=pygame.time.get_ticks()
+        self.shoot_time= 3000
+        self.last_shot=pygame.time.get_ticks()
+    
+    def shoot(self,player_x, player_y):
+        current_time=pygame.time.get_ticks()
+        if current_time-self.last_shot>=self.shoot_time:
+            bullet_start_x= self.rect.x + TILE_SIZE
+            bullet_start_y= self.rect.y + TILE_SIZE
+            bullet=Bullet(bullet_start_x, bullet_start_y, player_x, player_y, colour=(255,0,0), speed=10, width=50, height=20)
+            bullet_group.add(bullet)
+            self.last_shot= current_time
+
+class evil_skeleton(Enemy):
+     def __init__(self, x, y,):
+        super().__init__(x,y, health=25)
+        self.image=pygame.image.load("pixil-frame-0 (42).png")
+        self.image=pygame.transform.scale(self.image,(200, 200))
+        self.rect= self.image.get_rect(topleft=(x,y))
+        self.shoot_time=pygame.time.get_ticks()
+        self.shoot_time= 2000
+        self.last_shot=pygame.time.get_ticks()
+    
+     def shoot(self,player_x, player_y):
+        current_time=pygame.time.get_ticks()
+        if current_time-self.last_shot>=self.shoot_time:
+            bullet_start_x= self.rect.x + TILE_SIZE
+            bullet_start_y= self.rect.y + TILE_SIZE
+            bullet=Bullet(bullet_start_x, bullet_start_y, player_x, player_y, colour=(255,165,0), speed=15, width=50, height=20)
+            bullet_group.add(bullet)
+            self.last_shot= current_time
+
+class evil_skinnybot(Enemy):
+     def __init__(self, x, y,):
+        super().__init__(x,y, health=20)
+        self.image=pygame.image.load("pixil-frame-0 (60).png")
+        self.image=pygame.transform.scale(self.image,(200, 200))
+        self.rect= self.image.get_rect(topleft=(x,y))
+        self.shoot_time=pygame.time.get_ticks()
+        self.shoot_time= 3000
+        self.last_shot=pygame.time.get_ticks()
+    
+     def shoot(self,player_x, player_y):
+        current_time=pygame.time.get_ticks()
+        if current_time-self.last_shot>=self.shoot_time:
+            bullet_start_x= self.rect.x + TILE_SIZE
+            bullet_start_y= self.rect.y + TILE_SIZE
+            bullet=Bullet(bullet_start_x, bullet_start_y, player_x, player_y, colour=(0,255,0), speed=20, width=60, height=20)
+            bullet_group.add(bullet)
+            self.last_shot= current_time
+class evil_robot(Enemy):
+     def __init__(self, x, y,):
+        super().__init__(x,y, health=40)
+        self.image=pygame.image.load("pixil-frame-0 (61).png")
+        self.image=pygame.transform.scale(self.image,(200, 200))
+        self.rect= self.image.get_rect(topleft=(x,y))
+        self.shoot_time=pygame.time.get_ticks()
+        self.shoot_time= 2000
+        self.last_shot=pygame.time.get_ticks()
+    
+     def shoot(self,player_x, player_y):
+        current_time=pygame.time.get_ticks()
+        if current_time-self.last_shot>=self.shoot_time:
+            bullet_start_x= self.rect.x + TILE_SIZE
+            bullet_start_y= self.rect.y + TILE_SIZE
+            bullet=Bullet(bullet_start_x, bullet_start_y, player_x, player_y, colour=(255,0,0), speed=17, width=50, height=50)
+            bullet_group.add(bullet)
+            self.last_shot= current_time
+class ghost_robot(Enemy):
+     def __init__(self, x, y,):
+        super().__init__(x,y, health=30)
+        self.image=pygame.image.load("pixil-frame-0 (63).png")
+        self.image=pygame.transform.scale(self.image,(200, 200))
+        self.rect= self.image.get_rect(topleft=(x,y))
+        self.shoot_time=pygame.time.get_ticks()
+        self.shoot_time= 1000
+        self.last_shot=pygame.time.get_ticks()
+    
+     def shoot(self,player_x, player_y):
+        current_time=pygame.time.get_ticks()
+        if current_time-self.last_shot>=self.shoot_time:
+            bullet_start_x= self.rect.x + TILE_SIZE
+            bullet_start_y= self.rect.y + TILE_SIZE
+            bullet=Bullet(bullet_start_x, bullet_start_y, player_x, player_y, colour=(255,255,0), speed=15, width=40, height=20)
+            bullet_group.add(bullet)
+            self.last_shot= current_time
+
+coin_group= pygame.sprite.Group()
+powerup_group=pygame.sprite.Group()
+spider_group=pygame.sprite.Group()
+bullet_group=pygame.sprite.Group()
+skeleton_group=pygame.sprite.Group()
+enemy_group=pygame.sprite.Group()
+skinnybot_group=pygame.sprite.Group()
+evilrobot_group=pygame.sprite.Group()
+ghostrobot_group=pygame.sprite.Group()
+main_character=player()
+
+clock=pygame.time.Clock()
+
+class Tile(pygame.sprite.Sprite):
+    def __init__(self,x,y, image_integer, main_group, sub_group=""):
+        super().__init__()
+        if image_integer==1:
+            self.image= pygame.image.load("SciFi_Warehouse tile 1.png")
+            self.image=pygame.transform.scale(self.image,(50,50))
+            sub_group.add(self)
+
+        main_group.add(self)
+        self.rect=self.image.get_rect()
+        self.rect.topleft= (x,y)
+
+Main_Tile_Group=pygame.sprite.Group()
+Futuristic_Tile_Group=pygame.sprite.Group()
+
+tile_map_1=[
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,4,0,0],
+    [1,1,1,1,1,1,1,4,1,5,1,1,0,1,1,1,1,1,1,1],
+]
+
+tile_map_2=[
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,5,0,0,0,0,0,0,0,0,0],
+    [1,1,1,1,1,1,1,4,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+
+tile_map_3=[
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,6,0,0,0,0,5,0,0,0],
+    [0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,4,0,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+
+tile_map_4=[
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,7,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5,4,0,0],
+    [0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+
+tile_map_5=[
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,1,4,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+
+tile_map_6=[
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,8,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,5,0,0,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+
+tile_map_7=[
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+
+tile_map_8=[
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+
+tile_map_9=[
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+
+tile_map_10=[
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+
+tile_map_11=[
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+
+tile_map_12=[
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+
+tile_map_13=[
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+
+tile_map_14=[
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+]
+
+def tile_load(tile_map, main_group, sub_group):
+    for i in range (len(tile_map)):
+        for j in range(len(tile_map [i])):
+            if tile_map[i][j]==1:
+                tile=Tile(j*TILE_SIZE, i*TILE_SIZE, 1, Main_Tile_Group, Futuristic_Tile_Group)
+            elif tile_map[i][j]==2:
+                spider= evil_spider(j*TILE_SIZE, i*TILE_SIZE)
+                spider_group.add(spider)
+            elif tile_map[i][j]==3:
+                skeleton= evil_skeleton(j*TILE_SIZE, i*TILE_SIZE)
+                skeleton_group.add(skeleton)
+            elif tile_map[i][j]==4:
+                powerup=Powerup(j*TILE_SIZE, i*TILE_SIZE)
+                powerup_group.add(powerup)
+            elif tile_map[i][j]==5:
+                coin=Coin(j*TILE_SIZE,i*TILE_SIZE)
+                coin_group.add(coin)
+            elif tile_map[i][j]==6:
+                skinnybot=evil_skinnybot(j*TILE_SIZE,i*TILE_SIZE)
+                skinnybot_group.add(skinnybot)
+            elif tile_map[i][j]==7:
+                evilrobot=evil_robot(j*TILE_SIZE,i*TILE_SIZE)
+                evilrobot_group.add(evilrobot)
+            elif tile_map[i][j]==8:
+                ghostrobot=ghost_robot(j*TILE_SIZE, i*TILE_SIZE)
+                ghostrobot_group.add(ghostrobot)
+
+tile_maps=[tile_map_1, tile_map_2, tile_map_3, tile_map_4, tile_map_5, tile_map_6, tile_map_7, tile_map_8, tile_map_9, tile_map_10, tile_map_11, tile_map_12, tile_map_13, tile_map_14]
+
+current_tilemap = 0
+tile_load(tile_maps[current_tilemap], Main_Tile_Group, Futuristic_Tile_Group,)
+
+def tile_map_switch(current_tilemap, Main_Tile_Group, Futurisitc_Tile_Group,):
+    if current_tilemap < len(tile_maps)-1:
+        current_tilemap+=1
+        tile_load(tile_maps[current_tilemap], Main_Tile_Group, Futuristic_Tile_Group)
+        current_background= backgrounds[current_tilemap]
+        current_background_rect= current_background.get_rect()
+        current_background_rect.topleft= (0,0)
+    return current_tilemap, current_background, current_background_rect
+
+main_menu=pygame.image.load("pixil-frame-0 (45).png")
+difficulty_screen=pygame.image.load("pixil-frame-0 (46).png")
+controls_screen=pygame.image.load("pixil-frame-0 (44).png")
+death_screen=pygame.image.load("pixil-frame-0 (47).png")
+thanks_screen=pygame.image.load("pixil-frame-0 (49).png")
+cutscene=pygame.image.load("pixil-frame-0 (58).png")
+cutscene_2=pygame.image.load("pixil-frame-0 (59).png")
+timer=False
+start_time=10000
+def start_timer():
+    global start_time
+    global timer
+    start_time=10000
+    timer=True
+def update_time():
+    global start_time
+    if timer:
+        start_time-=1
+def display_timer():
+    global start_time
+    font=pygame.font.Font(None,36)
+    minutes=start_time//60
+    seconds=start_time%60
+    timer_display=font.render(f"Time: {minutes:02}:{seconds:02}", True, (255, 255, 255))
+    timer_rect= timer_display.get_rect(topright=(screen.get_width(),0))
+    screen.blit(timer_display, timer_rect)
+
+def display_menu():
+    screen.fill((0,0,0))
+    screen.blit(main_menu, (0,0))
+
+def display_difficulty_level():
+    screen.fill((0,0,0))
+    screen.blit(difficulty_screen, (0,0))
+
+def display_controls_screen():
+    screen.fill((0,0,0))
+    screen.blit(controls_screen, (0,0))
+
+def display_death_screen():
+    screen.fill((0,0,0))
+    screen.blit(death_screen, (0,0))
+
+def display_thanks_screen():
+    screen.fill((0,0,0))
+    screen.blit(thanks_screen, (0,0))
+
+def display_cutscene():
+    screen.fill((0,0,0))
+    screen.blit(cutscene, (0,0))
+
+def display_cutscene_2():
+    screen.fill((0,0,0))
+    screen.blit(cutscene_2, (0,0))
+
+def main_game(game_difficulty):
+        for event in pygame.event.get():
+            if event.type==pygame.QUIT:
+                running=False
+        global game_screen
+        global start_time
+        global timer
+        if game_difficulty=="Hard" and not timer:
+            start_timer()
+        update_time()
+        keys=pygame.key.get_pressed()
+        main_character.movement(keys)
+        main_character.jump(keys)
+        if keys[K_f]:
+            main_character.shoot()
+        player_x=main_character.rect.x
+        player_y=main_character.rect.y
+        bullet_group.update()
+        for enemy in enemy_group:
+            enemy.shoot(player_x, player_y)
+        screen.fill((0,0,0))
+        screen.blit(current_background, current_background_rect)
+        main_character.healthBar.update(main_character.health)
+        main_character.healthBar.render(screen)
+        Main_Tile_Group.draw(screen)
+        spider_group.draw(screen)
+        skeleton_group.draw(screen)
+        skinnybot_group.draw(screen)
+        evilrobot_group.draw(screen)
+        ghostrobot_group.draw(screen)
+        bullet_group.draw(screen)
+        powerup_group.draw(screen)
+        coin_group.draw(screen)
+        draw_grid()
+        check_powerup_collision()
+        check_coin_collision()
+        display_coin_count()
+        iscollision()
+        enemy_collision()
+        if main_character.powerup_timer>0:
+            main_character.powerup_timer-=1
+        if main_character.powerup_timer==0:
+            main_character.speed=5
+        screen.blit(main_character.image,main_character.rect)
+        if game_difficulty=="Hard":
+            display_timer()
+        pygame.display.flip()
+        clock.tick(60)
+        if main_character.health==0 or start_time<0:
+            game_screen="Death screen"
+            timer=False
+
+game_screen="main menu"
+
+running=True
+while running:
+    for event in pygame.event.get():
+        if event.type==pygame.QUIT:
+            running=False
+    keys=pygame.key.get_pressed()
+    if game_screen=="main menu":
+        display_menu()
+        if keys[K_a]:
+            game_screen="Difficulty"
+        elif keys[K_b]:
+            game_screen="Controls"
+    elif game_screen=="Difficulty":
+        display_difficulty_level()
+        if keys[K_c]:
+            game_difficulty="Easy"
+            display_cutscene()
+            game_screen="Cutscene"
+        elif keys [K_d]:
+            game_difficulty="Hard"
+            display_cutscene_2()
+            game_screen="Cutscene_2"
+    
+    elif game_screen=="Cutscene":
+        if keys[K_w]:
+            game_screen="Main Game"
+    
+    elif game_screen=="Cutscene_2":
+        if keys[K_v]:
+            game_screen="Main Game"
+
+    elif game_screen=="Controls":
+        display_controls_screen()
+        if keys[K_ESCAPE]:
+            game_screen="main menu"
+    elif game_screen=="Main Game":
+        main_game(game_difficulty)
+    elif game_screen=="Death screen":
+        display_death_screen()
+        if keys[K_g]:
+            main_character.health=3
+            reset_enemies()
+            game_screen="Main Game"
+        elif keys[K_h]:
+            game_screen="Thanks Screen"
+    elif game_screen== "Thanks Screen":
+        display_thanks_screen()
+    pygame.display.flip()
+    clock.tick(60)
+pygame.quit()
